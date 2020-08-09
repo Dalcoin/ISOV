@@ -4,7 +4,7 @@
 FILEISO=$PWD/run_iso
 FILEPHN=$PWD/run_phen
 
-COMPILE_ISO="f90 $F90FLAGS -o run_iso -s -w eos_v4.f ios_v4.f $LINK_FNL"
+COMPILE_ISO="f90 $F90FLAGS -o run_iso -s -w eos_v4.f iso_v4.f $LINK_FNL"
 COMPILE_PHN="f90 $F90FLAGS -o run_phn -s -w eos_v4.f phen_eos.f $LINK_FNL"
 
 if [ -f "$FILEISO" ]

@@ -1,4 +1,4 @@
-import pmod.compile as comp
+import pmod.program_scaffolding.compile as comp
 
 '''
 This script faciliates compiling binaries from the source ('src') folder
