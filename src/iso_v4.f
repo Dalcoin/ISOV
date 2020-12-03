@@ -1,19 +1,23 @@
 c   ISO fortran Routines and Functions: Version 5.0 
-c   Written by: Dalcoin
+c   Written by: Randy Millerson
 
        program isovalues
        implicit real*8(a-h,o-z)
 
-       common/maineos/xdata(75),zdata(75),nxdata,
-     3                 xsnm(75), ydata(75),nxnm,
-     1                 breakz(75),cscoefz(4,75),
-     2                 breaky(75),cscoefy(4,75),
+       common/maineos/xdata(100),zdata(100)
+     1                 xsnm(100), ydata(100)
+     2                 breakz(100),cscoefz(4,100),
+     3                 breaky(100),cscoefy(4,100),
      4                 xdatas(100),xdatan(100)
+       common/mainiso/n,n0,n1,
+     1                easym(100),breaks(100),cscoefs(4,100),
+     2                den(100),breaka(100),cscoefa(4,100),
+     3                breakd(100), coeffd(4,100),
+     4                breakp0(100), coeffp0(4,100),
+     5                breakp1(100), coeffp1(4,100)
 
-       common/parz/n_den,mic,isnm,isym_emp,k0,rho0,fff
-       common/readpar/n_read
-
-       common/pariso/nrho_ref, rho1, rho_ref(100)
+       common/pareos/n_read
+       common/paremp/mic,isnm,isym_emp,k0,rho0
 
        call readISO()
        call getISO(0)
@@ -22,139 +26,110 @@ c   Written by: Dalcoin
        end program
 
 
-!      Subroutine to read in EoS, run this first for the ISO routine
+c      Subroutine to read in EoS, run this first for the ISO routine
        subroutine readISO()
 c      creates a series of splines for the input nuclear EoS.
 c      Splines created are den vs. energy-per-particle for both
 c      symmetric and neutron matter as well as den vs. pressure
 
        implicit real*8(a-h,o-z)
-       common/maineos/xdata(75),zdata(75),nxdata,
-     3                 xsnm(75), ydata(75),nxnm,
-     1                 breakz(75),cscoefz(4,75),
-     2                 breaky(75),cscoefy(4,75),
+       common/maineos/xdata(100),zdata(100)
+     1                 xsnm(100), ydata(100)
+     2                 breakz(100),cscoefz(4,100),
+     3                 breaky(100),cscoefy(4,100),
      4                 xdatas(100),xdatan(100)
-       common/mainiso/n,n_0,n_1,
-     1                easym(75),breaks(75),cscoefs(4,75),
-     2                den(75),breaka(75),cscoefa(4,75),
+       common/mainiso/n,n0,n1,
+     1                easym(100),breaks(100),cscoefs(4,100),
+     2                den(100),breaka(100),cscoefa(4,100),
      3                breakd(100), coeffd(4,100),
      4                breakp0(100), coeffp0(4,100),
      5                breakp1(100), coeffp1(4,100)
 
-
-       common/parz/n_den,mic,isnm,isym_emp,k0,rho0,fff
-       common/readpar/n_read
+       common/pareos/n_read
+       common/paremp/mic,isnm,isym_emp,k0,rho0
        common/factor/pi,pi2
-
-       common/pariso/nrho_ref, rho1, rho_ref(100)
 
        pi=3.141592654d0 
        pi2=pi*pi
 
 c       open(unit=000,file='dump.don')
-       open(unit=515,file='par.don')
-       open(unit=525,file='refpar.don')
+       open(unit=515,file='readpar.don')
+       open(unit=616,file='phenpar.don')
        open(unit=919,file='IsoVals.don')
 
-       read(515,*) n, n_den, n_read, n_0, n_1,
-     1             mic,isnm,isym_emp,k0,rho0,fff
-
-       read(525,*) nrho_ref, rho1
-       if(nrho_ref .gt. 0) then
-          do i=1,n
-             read(525,*) rho_ref(i)
-          end do
-       end if
+c      n, n0, and n1 must be greater than 3 if greater not equal to 0.
+       read(515,*) n_read, nkf_read, n, n0, n1,
+       read(616,*) mic, isnm, isym_emp, k0, rho0
 
        if(n_read .eq. 0) then
           open(unit=14,file='ex_nxlo.don')
-          nxdata = n
-          nxnm = n 
-       else if(n_read .eq. 1) then 
-          open(unit=14, file='e0_nxlo.don') 
-          open(unit=15, file='e1_nxlo.don')
-          nxdata = n_0
-          nxnm = n_1
-          if(n .gt. 3) then
-             open(unit=17, file='den.don')
-          end if
-       else if(n_read .eq. 2) then           
-          open(unit=14, file='e0_nxlo.don')
-          nxdata = n
-       end if
-
-       if(n_read .eq. 0) then
-          do i=1,n
+          do i=1,n0
              read(14,*) xkf, ydata(i), zdata(i)
-             xdata(i)= (2.d0/3.d0)*xkf**3/pi2
+             if(nkf_read .eq. 1) then
+                xdatas(i) = (2.d0/3.d0)*xkf*xkf*xkf/pi2
+             else if(nkf_read .eq. 0) then
+                xdatas(i) = xkf
+             end if
              easym(i) = zdata(i)-ydata(i)
           end do
-          n2 = n-1
        else if(n_read .eq. 1) then
-          do i=1,n_0
+          open(unit=14, file='e0_nxlo.don') 
+          open(unit=15, file='e1_nxlo.don')
+          do i=1,n0
              read(14,*) xkfs, ydata(i)
-             xdatas(i) = (2.d0/3.d0)*xkfs**3/pi2
-          end do 
-          do i=1,n_1
-             read(15,*) xkfn, zdata(i)
-             xdatan(i) = (1.d0/3.d0)*xkfn**3/pi2
+             if(nkf_read .eq. 1) then
+                xdatas(i) = (2.d0/3.d0)*xkfs*xkfs*xkfs/pi2
+             else if(nkf_read .eq. 0) then
+                xdatas(i) = xkfs
+             end if
           end do
-          if(n .gt. 3) then
-             do i = 1,n
-                read(17,*) xdata(i) 
-             end do
-             n2 = n-1
-          end if
-       else if(n_read .eq. 2) then 
-          do i=1,n
-             read(14,*) xkf, ydata(i)
-             xdata(i)= (2.d0/3.d0)*xkf**3/pi2
-             easym(i) = ydata(i)
-          end do 
-          n2 = n-1
+          do i=1,n1
+             read(15,*) xkfn, zdata(i)
+             if(nkf_read .eq. 1) then
+                xdatan(i) = (1.d0/3.d0)*xkfn*xkfn*xkfn/pi2
+             else if(nkf_read .eq. 0) then
+                xdatan(i) = xkfn
+             end if
+          end do
        end if
 
-       if(mic .eq. 0) then 
+       if(n .gt. 0) then
+          open(unit=17, file='den.don')
+          do i=1,n0
+             read(14,*) den(i)
+             xdatas(i)= (2.d0/3.d0)*xkf*xkf*xkf/pi2
+          end do 
+       end if
+
+       if(mic .eq. 0) then
           if(n_read .eq. 0) then
-             do i=1,n 
-                ydata(i) = e0_val(xdata(i))
-             end do
-          else if(n_read .eq. 1) then
-             do i=1,n_0
+             do i=1,n0
                 ydata(i) = e0_val(xdatas(i))
              end do
-          else if(n_read .eq. 2) then 
-             do i=1,n
-                ydata(i) = e0_val(xdata(i))
+          end if
+       end if
+
+       if(mic .eq. 0) then
+          if(n_read .eq. 0 .or. n_read .eq. 2) then
+             do i=1,n0
+                ydata(i) = e0_val(xdatas(i))
              end do
           end if
-        end if
+       end if
 
 c       set up EoS interpolation
        if(n_read .eq. 0) then
-          call dcsakm(n,xdata,ydata,breaky,cscoefy)
-          call dcsakm(n,xdata,zdata,breakz,cscoefz)
-          call dcsakm(n,xdata,easym,breaks,cscoefs)
+          call dcsakm(n,xdatas,ydata,breaky,cscoefy)
+          call dcsakm(n,xdatas,zdata,breakz,cscoefz)
+          call dcsakm(n,xdatas,easym,breaks,cscoefs)
        else if(n_read .eq. 1) then
-          call dcsakm(n_1,xdatan,zdata,breakz,cscoefz)
-          call dcsakm(n_0,xdatas,ydata,breaky,cscoefy)
-          if(n .gt. 3) then
-             do i=1,n
-                e0temp = dcsval(xdata(i),n_1-1,breaky,cscoefy) 
-                e1temp = dcsval(xdata(i),n_0-1,breakz,cscoefz) 
-                easym(i) = e1temp-e0temp
-             end do
-             call dcsakm(n,xdata,easym,breaks,cscoefs)
-          else
-             do i=1,n_0
-                e1temp = dcsval(xdatas(i),n_1-1,breakz,cscoefz) 
-                easym(i) = e1temp-ydata(i) 
-             end do
-             call dcsakm(n_0,xdatas,easym,breaks,cscoefs)
-          end if
-       else if(n_read .eq. 2) then 
-          call dcsakm(n, xdata, ydata, breaky, cscoefy)
-          call dcsakm(n,xdata,easym,breaks,cscoefs)
+          call dcsakm(n1,xdatan,zdata,breakz,cscoefz)
+          call dcsakm(n0,xdatas,ydata,breaky,cscoefy)
+          do i=1,n0
+             e1temp = dcsval(xdatas(i),n1-1,breakz,cscoefz) 
+             easym(i) = e1temp-ydata(i) 
+          end do
+          call dcsakm(n0,xdatas,easym,breaks,cscoefs)
        end if
 
        end
@@ -179,11 +154,9 @@ c       set up EoS interpolation
        common/isovals/desym(100),de0(100),de1(100),
      1                prse0(100),prse1(100),prsesym(100)
 
-       common/parz/n_den,mic,isnm,isym_emp,k0,rho0,fff
-       common/readpar/n_read
+       common/pareos/n_read
+       common/paremp/mic,isnm,isym_emp,k0,rho0
        common/factor/pi,pi2
-
-       common/pariso/nrho_ref, rho1, rho_ref(100)
 
        nexit = 0
        if(nswitch .lt. 0 .or. nswitch .gt. 2) then 
@@ -459,4 +432,110 @@ c      to pure neutron matter
      1        2x,F8.4,2x,F8.4)
 
        end subroutine
+
+       function eafff(rho)
+       implicit real*8(a-h,o-z)
+        
+       a1=119.14d0
+       b1=-816.95d0
+       c1=724.51d0
+       d1=-32.99d0
+       d2=891.15d0
+       ff1=a1*2.d0*(0.5d0)**(5.d0/3.d0)
+       ff2=d1*2.d0*(0.5d0)**(5.d0/3.d0) + 
+     1     d2*2.d0*(0.5d0)**(8.d0/3.d0) 
+         
+       alph=0.2d0 
+        
+       ee=ff1*(rho)**(2.d0/3.d0) + b1*rho +
+     1 c1*(rho)**(alph+1.d0) + ff2*(rho)**(5.d0/3.d0) 
+
+       eafff = ee
+       end   
+
+
+       function earat(rho)
+       implicit real*8(a-h,o-z)
+       common/parz/n_den,mic,isnm,isym_emp,k0,rho0
+
+       pi=3.141592654d0 
+       pi2=pi*pi
+       
+       rat=rho/rho0
+        
+       fact=(3.d0*pi2/2.d0)**(2.d0/3.d0) 
+       hbc=197.327d0
+       hbc2=hbc**2
+       xm=938.926d0 
+       tfact=(3.d0*hbc2/10.d0/xm)
+       totfact=fact*tfact
+           
+       alpha=-29.47-46.74*(k0+44.21)/(k0-166.11)
+       beta=23.37*(k0+254.53)/(k0-166.11)       
+       sigma=(k0+44.21)/210.32                   
+        
+       earat = totfact*(datapt)**(2.d0/3.d0) + (alpha/2.d0)*(rat)+
+     1    (beta/(sigma + 1.d0))*(rat)**(sigma) 
+        
+       end 
+
+
+       function e0_val(rho)
+       implicit real*8(a-h,o-z)
+       common/maineos/xdata(75),zdata(75),nxdata,
+     3                 xsnm(75), ydata(75),nxnm, 
+     1                 breakz(75),cscoefz(4,75),       
+     2                 breaky(75),cscoefy(4,75),  
+     4                 xdatas(100),xdatan(100)
+       common/parz/n_den,mic,isnm,isym_emp,k0,rho0,fff
+
+c      Calculates the energy-per-particle for symmetric nuclear matter from a density
+
+       nintv=nxdata-1
+
+c      phenom_eos_section
+       if(mic.eq.0) then 
+       
+          if(isnm.eq.1) then
+             e0=eafff(rho) 
+          else 
+             e0=earat(rho) 
+          end if 
+       
+          if(rho.le.0.0019.and.e0.gt.0.d0) then
+             e0=0.d0 
+          end if
+
+       else 
+          e0=dcsval(rho,nintv,breaky,cscoefy)            
+       end if
+         
+       e0_val = e0 
+       end   
+
+
+       function e1_val(rho)
+       implicit real*8(a-h,o-z)
+       common/maineos/xdata(75),zdata(75),nxdata,
+     3                 xsnm(75), ydata(75),nxnm, 
+     1                 breakz(75),cscoefz(4,75),       
+     2                 breaky(75),cscoefy(4,75),  
+     4                 xdatas(100),xdatan(100)
+       common/parz/n_den,mic,isnm,isym_emp,k0,rho0,fff
+
+c      Calculates the energy-per-particle for neutron nuclear matter from a density
+c      intialization (calling init) is assumed
+
+       nintv2=nxnm-1 
+       e1_val = dcsval(rho,nintv2,breakz,cscoefz)
+       end   
+
+
+       function esym_ph(rho, gam)
+       implicit real*8(a-h,o-z)
+       common/parz/n_den,mic,isnm,isym_emp,k0,rho0,fff
+           
+       rat=rho/rho0       
+       esym_ph = 22.d0*rat**gam + 12.d0*rat**(2.d0/3.d0) 
+       end 
 
