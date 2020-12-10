@@ -7,7 +7,7 @@ the scaffolding provided by 'compile.py'
 '''
 
 binList = ("run_iso", "run_phn")
-srcScript = "compile_iso.sh"
+srcScript = "compile.sh"
 binScript = "run.sh"
 
 success = comp.compileFunc(binList, src_script=srcScript, bin_script=binScript)
