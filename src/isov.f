@@ -386,12 +386,12 @@ c      Arrays denarr, e0arr and esymarr must be set.
         
        dimension :: ea(21,100), alp(21)
 
-       open(777,file='parab.don')
+       open(777,file='prbvals.don')
 
        pi=3.14159d0
        pi2 = pi*pi
 
-       if(nval .lt. 3 .or. nval .gt. 21) then
+       if(nval .lt. 2 .or. nval .gt. 21) then
            goto 4567
        end if
 

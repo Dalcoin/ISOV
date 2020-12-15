@@ -6,7 +6,7 @@ and moving those binaries to the binary folder ('bin'). This script uses
 the scaffolding provided by 'compile.py'
 '''
 
-binList = ("run_iso", "run_phn")
+binList = ("run",)
 srcScript = "compile.sh"
 binScript = "run.sh"
 
