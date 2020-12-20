@@ -1,4 +1,4 @@
-import pmod.program_scaffolding.compile as comp
+from lib.progLib.programCompile import progComp
 
 '''
 This script faciliates compiling binaries from the source ('src') folder
@@ -6,14 +6,15 @@ and moving those binaries to the binary folder ('bin'). This script uses
 the scaffolding provided by 'compile.py'
 '''
 
-binList = ("run",)
-srcScript = "compile.sh"
-binScript = "run.sh"
+srcBin = ("run",)
+srcRun = "compile.sh"
+binRun = "run.sh"
 
-success = comp.compileFunc(binList, src_script=srcScript, bin_script=binScript)
+compInst = progComp(srcBin, dir_name='isov')
+successfulCompilation = compInst.compileFunc(safety_bool=False)
 
 print(" ")
-if(success):
+if(successfulCompilation):
     print("No fatal errors detected, see above for runtime messesges")
 else:
     print("Fatal error detected! See above for runtime error(s)")

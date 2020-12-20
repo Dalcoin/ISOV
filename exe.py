@@ -1,34 +1,26 @@
 import sys
 
-import pmod.isov as isov               # 'isov' is not a standard pmod module and must be added to the 'pmod' folder
-import pmod.ioparse as iop
+from lib import isov
+from lib.progLib.pmod import ioparse as iop
 
 
-def failure_Detection(test, msg, spc='    '):
+'''
+This script is the main routine for the ISOV program
 
-    if(isinstance(spc, str)):
-        space = spc
-    else:
-        space = ''
+Direction:
 
-    if(test == False):
-        print(space+"[exe] Error: A Fatal error was detected...")
-        print(space+"Failure point: "+msg)
-        print(space+"The script will perform clean-up and then terminate\n")
-        sys.exit()
-    else:
-        pass
-    return None
+    programMode : If True, will run the ISOV program in the shell
+    benvMode :    If True, will run only the ISOV Loop
 
-spc = '    '
+'''
 
-isov_inst = isov.isov()
-failure_Detection(isov_inst, "Fatal error when initializing ISOV routine\n", spc)
+programMode = True
 
-success = isov_inst.clear_data_folder()
-if(success == False):
-    print(spc+"[exe] Warning: failure to clear data folder and reset internal pathway\n")
+isovInst = isov.isov()
 
-isov_run_test = isov_inst.run_isov_loop()
-failure_Detection(isov_run_test, "Fatal error when running ISOV program\n", spc)
-isov_inst.clean_up()
+if(programMode):
+    isovInst.set_isov_menu()
+    isovInst.program_loop(isovInst.isov_program_loop, program_name='ISOV')
+    isovInst.exit_function("exiting program...", binlogfiles='CONSOLE.txt')
+else:
+    isovInst.exit_function("exiting program...")

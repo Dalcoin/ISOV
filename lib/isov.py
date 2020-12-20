@@ -32,7 +32,7 @@ class isov(progStruct):
                                    'src',
                                    'bin',
                                    'dat',
-                                   'isopar.don',
+                                   'par.don',
                                    'log.don',
                                    True,
                                    osFormat,
@@ -102,11 +102,18 @@ class isov(progStruct):
         ###############
 
         # General Regex codes
+        self.DIGITS   = r"(\d+)"
+        self.DIGITSPC = r"(\d+)\s+"
+
+        self.FLOAT    = r'([+-]*\d+\.*\d*)'
+        self.FLOATSPC = r'([+-]*\d+\.*\d*)\s+'
+
         self.RE_INT      = re.compile(r'([+-]*\d+)')
         self.RE_DIGITS   = re.compile(r"(\d+)")
         self.RE_DIGITSPC = re.compile(r"(\d+)\s+")
 
         self.RE_FLOAT        = re.compile(r'([+-]*\d+\.*\d*)')
+        self.RE_FLOATSPC     = re.compile(r'([+-]*\d+\.*\d*)\s+')
         self.RE_SCIFLOAT     = re.compile(r'(?:[+-]*\d+\.*\d*)+(?:[edED]+[+-]*\d+)?')
         self.RE_CHARFLOAT    = re.compile(r'(?:[a-zA-Z]+)?(?:[+-]*\d+\.*\d*)+')
         self.RE_CHARSCIFLOAT = re.compile(r'(?:[a-zA-Z]+)?(?:[+-]*\d+\.*\d*)+(?:[edED]+[+-]*\d+)?')
@@ -114,7 +121,11 @@ class isov(progStruct):
         self.RE_BOOL = re.compile(r'(?:TRUE|True|true|FALSE|False|false)')
         self.RE_BOOL_FR = re.compile(r'(?:VRAI|Vrai|vrai|FAUX|Faux|faux)')
 
-        # SKVAL regex codes
+        self.EXECREG = re.compile(self.DIGITSPC+self.DIGITS)
+        self.READREG = re.compile(5*self.DIGITSPC+self.DIGITS)
+        self.PHENREG = re.compile(3*self.DIGITSPC+2*self.FLOATSPC+self.FLOAT)
+
+        # Load regex codes
         self.LOADPAR = re.compile(r"\s*LOADPAR\s*:\s*(TRUE|True|true|FALSE|False|false)")
 
         # EoS errors 
@@ -139,11 +150,36 @@ class isov(progStruct):
         self.current_phnpar = []
         self.default_phnpar = []
 
+        # output data
+
+        self.eos_collect_lines = []
+        self.iso_collect_lines = []
+        self.prb_collect_lines = []
+        self.phn_collect_lines = []
+        self.sng_collect_lines = []
+
         # Set Binary and par Files
         self.isov_bin_list = [self.RUNNAME, self.XPEFILE, self.RDPFILE, self.PHPFILE, self.DENFILE]
         self.ISOV_SET_BINARIES = self.init_binary(self.isov_bin_list)
         self.ISOV_SET_PATHWAYS = self.isov_structure(**kwargs)
 
+        self.ISOV_SET_PARS = self.get_parameters(**kwargs)
+
+        self.EOS_OBJ = None
+        eoslist = self.collect_eos(**kwargs)
+        if(eoslist == False):
+            self.ISOV_SET_EOS = False
+        else:
+            self.EOS_OBJ = eoslist
+            self.ISOV_SET_EOS = True
+
+        self.DEN_OBJ = None
+        denlist = self.collect_den(**kwargs)
+        if(denlist == False):
+            self.ISOV_SET_DEN = False
+        else:
+            self.DEN_OBJ = denlist
+            self.ISOV_SET_DEN = True
 
     ##########################
     # Initiate BENV STRUCTRE #
@@ -160,10 +196,10 @@ class isov(progStruct):
             return False
         self.EOSPATH = self.FOLDPATH_DICT[self.EOSFOLD]
 
-        if(self.RUNFILE in self.BIN_DICT):
-            self.RUNPATH = self.BIN_DICT[self.RUNFILE]
+        if(self.RUNNAME in self.BIN_DICT):
+            self.RUNPATH = self.BIN_DICT[self.RUNNAME]
         else:
-            success = self.__err_print__("not found in '"+self.BINFOLD+"'", varID=self.RUNFILE, **kwargs)
+            success = self.__err_print__("not found in '"+self.BINFOLD+"'", varID=self.RUNNAME, **kwargs)
 
         if(self.XPEFILE in self.BIN_DICT):
             self.XPEPATH = self.BIN_DICT[self.XPEFILE]
@@ -313,9 +349,9 @@ class isov(progStruct):
         path = ''
         if(type == 'exec'):
             path = self.XPEPATH
-        elif(type = 'read'):
+        elif(type == 'read'):
             path = self.RDPPATH
-        elif(type = 'phen'):
+        elif(type == 'phen'):
             path = self.PHPPATH
         else:
             return self.__err_print__("should be one of the following: 'exec', 'read', 'phen'", varID='type', **kwargs)
@@ -324,199 +360,154 @@ class isov(progStruct):
         return success
 
 
-    def write_parlnlist(self, parlnlist, **kwargs):
+    def parse_readfiles(self, execvals, **kwargs):
 
         kwargs = self.__update_funcNameHeader__("write_parlnlist", **kwargs)
 
-        if(self.__not_arr_print__(parlnlist, varID='parlnlist', **kwargs)):
-            return False
-
-        if(len(parlnlist) != 3):
-            return self.__err_print__("should be a length of 3", varID='parlnlist', **kwargs)
-
-        execvals, readvals, phenvals = parlnlist
-
         nrun, nprint = execvals
-        execln = self.create_exeparln(nrun, nprint, **kwargs)
-        if(execln == False):
-            return self.__err_print__("failure to create a 'exec' parameter string", **kwargs)
-        success = self.write_parline(execln, 'exec', **kwargs)
-        if(success == False):
-            return self.__err_print__("failure to pass 'exec' parameter string", **kwargs)
 
-        n0, n1, n, n_read, nkf_read, ndn_read = readvals
-        readln = self.create_rrdparln(n0, n1, n, n_read, nkf_read, ndn_read, **kwargs)
-        if(readln == False):
-            return self.__err_print__("failure to create a 'read' parameter string", **kwargs)
-        success = self.write_parline(readln, 'read', **kwargs)
-        if(success == False):
-            return self.__err_print__("failure to pass 'read' parameter string", **kwargs)
-
-        mic, isnm, isym_emp, gam, xk0, rhosat = phenvals
-        phenln = self.create_phpparln(mic, isnm, isym_emp, gam, xk0, rhosat, **kwargs)
-        if(phenln == False):
-            return self.__err_print__("failure to create a 'phen' parameter string", **kwargs)
-        success = self.write_parline(phenln, 'phen', **kwargs)
-        if(success == False):
-            return self.__err_print__("failure to pass 'phen' parameter string", **kwargs)
-
+        readfiles = []
         if(str(nrun) == '1'):
-            if(str(nprint) == '0'):
-                readfiles = []
-            elif(str(nprint == '1'):
-                readfiles = []
+            if(str(nprint) == '1'):
+                readfiles = ["eosvals.don"]
+            elif(str(nprint) == '2'):
+                readfiles = ["isovals.don"]
+            elif(str(nprint) == '3'):
+                readfiles = ["eosvals.don", "isovals.don"]
+            else:
+                pass
+        elif(str(nrun) == '2'):
+            readfiles = ['prbvals.don']
+        elif(str(nrun) == '3'):
+            readfiles = ['pheneos.don']
+        else:
+            pass
+
+        return readfiles
+
+
+    def parse_parameters(self, par_lines, **kwargs):
+
+        kwargs = self.__update_funcNameHeader__("parse_parameters", **kwargs)
+
+        try:
+            execline = par_lines[0].rstrip()
+            readline = par_lines[1].rstrip()
+            phenline = par_lines[2].rstrip()
+        except:
+            return self.__err_print__("should be an array containing 3 strings", varID='par_lines', **kwargs)
+
+        try:
+            execlist = self.EXECREG.findall(execline)[0]
+        except:
+            return self.__err_print__("could not parse 'EXEC' line from 'par.don'", **kwargs)
+
+        try:
+            readlist = self.READREG.findall(readline)[0]
+        except:
+            return self.__err_print__("could not parse 'READ' line from 'par.don'", **kwargs)
+
+        try:
+            phenlist = self.PHENREG.findall(phenline)[0]
+        except:
+            return self.__err_print__("could not parse 'PHEN' line from 'par.don'", **kwargs)
+
+        return (execlist, readlist, phenlist)
+
+    def get_parameters(self, **kwargs):
+
+        kwargs = self.__update_funcNameHeader__("get_parameters", **kwargs)
+
+        # Get parameters from 'par.don' file
+        par_lines = self.get_options(**kwargs)
+        if(par_lines == False):
+            return self.__err_print__("could not collect lines from 'par.don' file", **kwargs)
+
+        # Format parameters lines into three data lines
+        pars = self.parse_parameters(par_lines, **kwargs)
+        if(pars == False):
+            return self.__err_print__("failure to format parameter data", **kwargs)
+
+        self.initial_exepar = pars[0]
+        self.initial_rrdpar = pars[1]
+        self.initial_phnpar = pars[2]
+
+        self.current_exepar = pars[0]
+        self.current_rrdpar = pars[1]
+        self.current_phnpar = pars[2]
+
+        return True
+
 
 
     ################
     # Output Data  #
     ################
 
-    def format_isov_data(self, benvdata,
-                               eospars=True,
-                               eosgrup=True,
-                               add_newline=True,
-                               add_descript=True,
-                               add_key=True,
-                               **kwargs):
+    def format_isov_data(self, isovdata, return_data=False, add_newline=True, **kwargs):
+
+        kwargs = self.__update_funcNameHeader__("format_isov_data", **kwargs)
 
         if(add_newline):
             nl = '\n'
         else:
             nl = ''
 
-        kwargs = self.__update_funcNameHeader__("format_isov_data", **kwargs)
+        phen_collect = [["n0",
+                         "rho0",
+                         "rho1",
+                         "rho2",
+                         "e0o",
+                         "e01",
+                         "e02",
+                         "e1o",
+                         "e11",
+                         "e12",
+                         "esym0",
+                         "esym1",
+                         "esym2",
+                         "prs0o",
+                         "prs01",
+                         "prs02",
+                         "prs1o",
+                         "prs11",
+                         "prs12",
+                         "bigL",
+                         "bigK",
+                         "bigKR",
+                         "bigK0"]]
 
-        par_Strings = []
-        val_Strings = []
-        den_Strings = []
-
-        rhops = []
-        rhons = []
-        rhots = []
-        rholab= []
-        rhoidx= []
-
-        ingroup_pars = {}
-        ingroup_vals = {}
-
-        if(add_descript):
-            if(eosgrup):
-                val_Strings.append("    NR        PR        NS        CHR       BE        SEC       RD      A   Z    (EOS)"+nl)
-            else:
-                val_Strings.append("    NR        PR        NS        CHR       BE        SEC       RD      EOS    (A  Z)"+nl)
-            val_Strings.append(nl)
-
-        eos_names = sorted(list(benvdata))
+        eos_names = sorted(list(isovdata))
 
         for i,eos in enumerate(eos_names):
-            if(eosgrup):
-                if(eospars):
-                    par_Strings.append(str(eos)+nl)
-                    val_Strings.append(str(eos)+nl)
-                else:
-                    val_Strings.append(str(eos)+nl)
+            isofiles, phenline = isovdata[eos]
+            file_names = sorted(list(isofiles))
+            for file in file_names:
+                lines = isofiles[file]
+                if(file == 'eosvals.don'):
+                    self.eos_collect_lines += ["EoS : "+str(eos)+", [phenline] : "+str(phenline)+"\n","\n"]
+                    self.eos_collect_lines += lines
+                    self.eos_collect_lines += ["\n", "\n"]
+                if(file == 'isovals.don'):
+                    self.phen_collect_lines += ["EoS : "+str(eos)+", [phenline] : "+str(phenline)+"\n","\n"]
+                    phen_collect.append(strl.array_to_str(map(lambda x: x.rstrip(), eos[file]), **kwargs))
+                if(file == 'prbvals.don'):
+                    self.prb_collect_lines += ("EoS : "+str(eos)+", [phenline] : "+str(phenline)+"\n","\n")
+                    self.prb_collect_lines += lines
+                    self.prb_collect_lines += ["\n", "\n"]
+                if(file == 'pheneos.don'):
+                    self.phn_collect_lines += ("EoS : "+str(eos)+", [phenline] : "+str(phenline)+"\n","\n")
+                    self.phn_collect_lines += lines
+                    self.phn_collect_lines += ["\n", "\n"]
 
-            skval = benvdata[eos]
-            az_names = sorted(list(skval))
-            for az in az_names:
-                pars, vals, dentable = skval[az]
-                if(eosgrup):
-                    nucleus = "  "+strl.array_to_str(az ,spc = '  ')+nl
-                    if(eospars):
-                        par_Strings.append(pars+nucleus)
-                        val_Strings.append(vals+nucleus)
-                    else:
-                        val_Strings.append(vals+nucleus)
-                else:
-                    if(eospars):
-                        if(ingroup_pars.get(az) == None):
-                            ingroup_pars[az] = []
-                        if(ingroup_vals.get(az) == None):
-                            ingroup_vals[az] = []
-                        ingroup_pars[az].append(pars+"  "+eos+nl)
-                        ingroup_vals[az].append(vals+"  "+eos+nl)
-                    else:
-                        if(ingroup_vals.get(az) == None):
-                            ingroup_vals[az] = []
-                        ingroup_vals[az].append(vals+"  "+eos+nl)
-                if(self.skval_dict['Density']):
-                    if(isinstance(dentable,(tuple,list))):
-                        if(len(dentable) > 0):
-                            if(len(rhops) == 0):
-                                rhops = [dentable[0]]+[dentable[1]]
-                                rhons = [dentable[0]]+[dentable[2]]
-                                rhots = [dentable[0]]+[dentable[3]]
-                                rholab= ["dens    ", "r0_"+str(az[0])+"_"+str(az[1])]
-                                rhoidx= ["dens: Density (fm^{-3})\n", "r0"+"_"+str(az[0])+"_"+str(az[1])+": "+str(eos)+"\n"]
-                            else:
-                                rhops.append(dentable[1])
-                                rhons.append(dentable[2])
-                                rhots.append(dentable[3])
-                                rholab.append("r"+str(i)+"_"+str(az[0])+"_"+str(az[1]))
-                                rhoidx.append("r"+str(i)+"_"+str(az[0])+"_"+str(az[1])+": "+str(eos)+"\n")
-                    else:
-                        self.__err_print__("does not point to an array : "+str(type(dentable)), varID='dentable', **kwargs)
-        if(eosgrup):
-            if(eospars):
-                par_Strings.append(nl)
-                val_Strings.append(nl)
-            else:
-                val_Strings.append(nl)
+        if(file == 'isovals.don'):
+            self.phen_collect_lines += px.matrix_to_str_array(px.table_str_to_numeric(phen_collect, **kwargs), **kwargs)
+            self.phen_collect_lines += ["\n", "\n"]
+
+        if(return_data):
+            output = True
         else:
-            if(len(ingroup_vals)>0):
-                az_names = sorted(list(ingroup_vals))
-                if(eospars):
-                    for az in az_names:
-                        nucleus = ["  "+strl.array_to_str(az ,spc = '  ')+nl]
-                        par_Strings += nucleus+ingroup_pars[az]
-                        val_Strings += nucleus+ingroup_vals[az]
-                else:
-                    for az in az_names:
-                        nucleus = ["  "+strl.array_to_str(az ,spc = '  ')+nl]
-                        val_Strings += nucleus+ingroup_vals[az]
-
-        if(add_key):
-            val_Strings.append(nl)
-            val_Strings.append(nl)
-            val_Strings.append("*Key"+nl)
-            val_Strings.append(nl)
-            val_Strings.append("NR  :  Neutron Radius"+nl)
-            val_Strings.append("PR  :  Proton  Radius"+nl)
-            val_Strings.append("NS  :  Neutron Skin"+nl)
-            val_Strings.append("CHR :  Charge  Radius"+nl)
-            val_Strings.append("BE  :  Binding Energy"+nl)
-            val_Strings.append("SEC :  Sym. Eng. Coef"+nl)
-            val_Strings.append("RD  :  Ref. Density  "+nl)
-            val_Strings.append("A   :  Mass    number"+nl)
-            val_Strings.append("Z   :  Atomic  number"+nl)
-
-        if(self.skval_dict['Density']):
-            if(all([len(rholab)>0,len(rhots)>0,len(rhons)>0,len(rhops)>0,len(rhoidx)>0])):
-                den_Strings.append(str(strl.array_to_str(rholab, spc='  ', **kwargs))+"\n")
-                den_Strings.append("\n")
-                den_Strings.append("Total Density\n")
-                for string in px.matrix_to_str_array(px.table_trans(rhots), spc='  ', roundUniform=True, pyver='2.6', **kwargs):
-                    den_Strings.append(str(string)+"\n")
-                den_Strings.append("\n")
-                den_Strings.append("Neutron Density\n")
-                for string in px.matrix_to_str_array(px.table_trans(rhons), spc='  ', roundUniform=True, pyver='2.6', **kwargs):
-                    den_Strings.append(str(string)+"\n")
-                den_Strings.append("\n")
-                den_Strings.append("Proton Density\n")
-                for string in px.matrix_to_str_array(px.table_trans(rhops), spc='  ', roundUniform=True, pyver='2.6', **kwargs):
-                    den_Strings.append(str(string)+"\n")
-                den_Strings.append("\n")
-                den_Strings.append("\n")
-                den_Strings.append("Index\n")
-                for line in rhoidx:
-                    den_Strings.append(line)
-                den_Strings.append("\n")
-                den_Strings.append("\n")
-
-        if(eospars):
-            output = (par_Strings, val_Strings, den_Strings)
-        else:
-            output = val_Strings, den_Strings
+            output = True
         return output
 
 
@@ -530,9 +521,50 @@ class isov(progStruct):
 
         return iop.flat_file_write(datfilepath, data, **kwargs)
 
+
+    def write_all_dat_output(self, **kwargs):
+
+        kwargs = self.__update_funcNameHeader__("write_all_dat_output", **kwargs)
+
+        if(len(self.eos_collect_lines) > 0):
+            success = self.write_to_dat(self.EOSFILE, self.eos_collect_lines, **kwargs)
+            if(success == False):
+                self.__err_print__("Failure when writing 'eos_collect_lines'", **kwargs)
+
+        if(len(self.iso_collect_lines) > 0):
+            success = self.write_to_dat(self.ISOFILE, self.iso_collect_lines, **kwargs)
+            if(success == False):
+                self.__err_print__("Failure when writing 'iso_collect_lines'", **kwargs)
+
+        if(len(self.prb_collect_lines) > 0):
+            success = self.write_to_dat(self.PRBFILE, self.prb_collect_lines, **kwargs)
+            if(success == False):
+                self.__err_print__("Failure when writing 'prb_collect_lines'", **kwargs)
+
+        if(len(self.phn_collect_lines) > 0):
+            success = self.write_to_dat(self.PHNFILE, self.phn_collect_lines, **kwargs)
+            if(success == False):
+                self.__err_print__("Failure when writing 'phn_collect_lines'", **kwargs)
+
+        return True
+
     #######
     # EOS #
     #######
+
+    def collect_den(self, **kwargs):
+        kwargs = self.__update_funcNameHeader__("collect_den", **kwargs)
+        eos_file_list = self.contentPath(self.EOSPATH, **kwargs)
+        if(eos_file_list == None or eos_file_list == False):
+            self.EOS_COLLECT_ERROR = True
+            return self.__err_print__("folder contents could not be retrieved", varID='eos', **kwargs)
+
+        if('den.txt' in eos_file_list):
+            file_path = self.joinNode(self.EOSPATH, 'den.txt', **kwargs)
+            den = iop.flat_file_intable(file_path, **kwargs)[0]
+            return den
+        else:
+            return []
 
     def collect_eos(self, **kwargs):
         '''
@@ -623,7 +655,9 @@ class isov(progStruct):
                     e10 = [e0data[0], e0data[1], e1data[0], e1data[1]]
                     eoslist.append((e10,idbaseline))
                 except:
-                    msg = ["failure to coerce data into four arrays, check pathways:", "e0 path : "+str(e0_file_path), "e1 path : "str(e1_file_path)]
+                    msg = ["failure to coerce data into four arrays, check pathways:", 
+                           "e0 path : "+str(e0_file_path),
+                           "e1 path : "+str(e1_file_path)]
                     self.__err_print__(msg, **kwargs)
                     continue
             else:
@@ -653,14 +687,31 @@ class isov(progStruct):
             return self.__err_print__("couldn't be parsed", varID='eosid', **kwargs)
 
 
-    def format_eos_data(self, eos_obj, parline, **kwargs):
+    def format_eos_data(self, eos_obj, readvals, den_obj=[], **kwargs):
 
         kwargs = self.__update_funcNameHeader__("format_eos_data", **kwargs)
+
+        if(self.__not_arr_print__(readvals, varID='readvals', **kwargs)):
+            return False
+        else:
+            if(len(readvals) < 2):
+                return self.__err_print__("should be an array of length 2", varID='readvals' **kwargs)
 
         try:
             eoslist, eosid = eos_obj
         except:
             return self.__err_print__("should be an array of length two", varID='eos_obj',  **kwargs)
+
+        if(self.__not_arr_print__(eoslist, varID='First Entry of eos_obj', **kwargs)):
+            return False
+
+        if(isinstance(den_obj, (list,tuple))):
+            if(len(den_obj)>0):
+                n = len(den_obj)
+            else:
+                n = 0
+        else:
+            n = 0
 
         output = ()
         exgp = []
@@ -670,21 +721,21 @@ class isov(progStruct):
         m = len(eoslist)
 
         if(m == 3):
-            type = 0
+            n_read = 0
             kf = eoslist[0]
             e0 = eoslist[1]
             e1 = eoslist[2]
             if(len(kf) == len(e0) and len(e0) == len(e1)):
-                n = len(kf)
+                n0 = len(kf)
+                n1 = len(kf)
             else:
                 return self.__err_print__("eos arrays should all be the same length", varID='eos_obj', **kwargs)
             exgp = map(lambda x,y,z: strl.array_to_str([x,y,z], spc='  ', endline=True), kf,e0,e1)
             eval = [exgp]
             neid = self.parse_eosid(eosid, 'ex', **kwargs)
-            parline = self.update_parline([n,0], [0,2], parline, **kwargs)
 
         elif(m == 4):
-            type = 1
+            n_read = 1
             kf0 = eoslist[0]
             e0  = eoslist[1]
             kf1 = eoslist[2]
@@ -693,23 +744,26 @@ class isov(progStruct):
             if(len(kf0) == len(e0)):
                 n0 = len(kf0)
             else:
-                return self.__err_print__("and the corrosponding kfs should be arrays with the same length", varID='e0', **kwargs)
+                return self.__err_print__("e0 and the corrosponding kfs should be arrays with the same length", **kwargs)
 
             if(len(kf1) == len(e1)):
                 n1 = len(kf1)
             else:
-                return self.__err_print__("and the corrosponding kfs should be arrays with the same length", varID='e0', **kwargs)
+                return self.__err_print__("e1 and the corrosponding kfs should be arrays with the same length", **kwargs)
 
             e0gp = map(lambda x,y: strl.array_to_str([x,y],spc='  ',endline=True),kf0,e0)
             e1gp = map(lambda x,y: strl.array_to_str([x,y],spc='  ',endline=True),kf1,e1)
             eval = [e0gp, e1gp]
             neid = self.parse_eosid(eosid, 'e10', **kwargs)
-            parline = self.update_parline([1, n0, n1], [2, 3, 4], parline, **kwargs)
 
         else:
-            return self.__err_print__("must a numeric array of length 2, 3 or 4", varID='eoslist', **kwargs)
+            return self.__err_print__("must a numeric array of length 2 or 3 : "+str(len(eoslist)), varID='eoslist', **kwargs)
 
-        output = (type, eval, parline, neid)
+        readline = self.create_rrdparln(n0, n1, n, n_read, readvals[1], readvals[2])
+        if(readline == False):
+            return self.__err_print__("failure to create readline", **kwargs)
+
+        output = (n_read, eval, readline, neid)
 
         return output
 
@@ -849,23 +903,22 @@ class isov(progStruct):
                          rrdline=None,
                          phnline=None,
                          run_cmd='run.sh',
-                         clean_run=True,
                          **kwargs):
 
         kwargs = self.__update_funcNameHeader__("single_run", **kwargs)
 
         if(isinstance(exeline, str)):
-            pass_exeline = self.write_parline(parline, type='exec', **kwargs)
+            pass_line = self.write_parline(exeline, type='exec', **kwargs)
             if(pass_line == False):
                 msg = ["failure to create and write exec line", "'exeline' : "+str(exeline)]
                 return self.__err_print__(msg, **kwargs)
         if(isinstance(rrdline, str)):
-            pass_line = self.write_parline(parline, type='exec', **kwargs)
+            pass_line = self.write_parline(rrdline, type='exec', **kwargs)
             if(pass_line == False):
                 msg = ["failure to create and write exec line", "'rrdline' : "+str(rrdline)]
                 return self.__err_print__(msg, **kwargs)
         if(isinstance(phnline, str)):
-            pass_line = self.write_parline(parline, type='exec', **kwargs)
+            pass_line = self.write_parline(phnline, type='exec', **kwargs)
             if(pass_line == False):
                 msg = ["failure to create and write exec line", "'phnline' : "+str(phnline)]
                 return self.__err_print__(msg, **kwargs)
@@ -877,16 +930,10 @@ class isov(progStruct):
         values_dict = self.read_files_from_folder('bin', result_files, clean=True, **kwargs)
 
         self.cycle+=1
-        return (values_dict)
+        return (values_dict, phnline)
 
 
-
-    def eos_loop(self, eoslist,
-                       execvals,
-                       readvals,
-                       phenvals,
-                       reset=True,
-                       **kwargs):
+    def eos_loop(self, eoslist, execvals, readvals, phenvals, denlist=[], reset=True, **kwargs):
         '''
         reset : [bool] (True), resets data files to pre-run values
         '''
@@ -894,7 +941,6 @@ class isov(progStruct):
         kwargs = self.__update_funcNameHeader__("eos_loop", **kwargs)
 
         isovals = {}
-        isovals_group = {}
 
         if(self.__not_arr_print__(eoslist, varID='eoslist', **kwargs)):
             return False
@@ -905,33 +951,44 @@ class isov(progStruct):
         if(self.__not_arr_print__(phenvals, varID='phenvals', **kwargs)):
             return False
 
-        if(not skval_run and not isinstance(osaz, (str,tuple))):
-            return self.__err_print__("should be a tuple when not using 'skval_run' option", varID='osaz', **kwargs)
-        else:
-            if(not skval_run and isinstance(osaz, (str,tuple))):
-                if(len(osaz) != 2):
-                    return self.__err_print__("should have a length of two : '"+str(len(osaz))+"'", varID='osaz', **kwargs)
+        readfiles = self.parse_readfiles(execvals, **kwargs)
+        if(readfiles == False):
+            return self.__err_print__("failure to parse which list of files to read from bin", **kwargs)
+
+        execline = self.create_exeparln(execvals[0], execvals[1], **kwargs)
+        if(execline == False):
+            return self.__err_print__("failure to create 'exec' values", **kwargs)
+
+        phenline = self.create_phpparln(phenvals[0],
+                                        phenvals[1],
+                                        phenvals[2],
+                                        phenvals[3],
+                                        phenvals[4],
+                                        phenvals[5],
+                                        **kwargs)
+        if(phenline == False):
+            return self.__err_print__("failure to create 'phen' values", **kwargs)
+
+        if(len(denlist)>0):
+            den_path = self.joinNode(self.BINPATH, self.DENFILE, **kwargs)
+            if(den_path == False):
+                return self.__err_print__(["could not be added to the 'bin' pathway:", self.BINPATH], varID=self.DENFILE, **kwargs)
+            success = iop.flat_file_write(den_path, denlist, **kwargs)
+            if(success == False):
+                return self.__err_print__("failure to pass 'den' list to 'den.don' in the bin folder", **kwargs)
 
         # cycle through each EoS
         for i,eos in enumerate(eoslist):
 
             # Convert each EoS object into eos data (eos_inst) and eos id (eosid)
-            formdat = self.format_eos_data(eos, execvals, readvals, phenvals, **kwargs)
-            if(formdat == False):
+            formatted_eos = self.format_eos_data(eos, readvals, denlist, **kwargs)
+            if(formatted_eos == False):
                 ith_entry = strl.print_ordinal(str(i+1), **kwargs)
                 msg = "The "+ith_entry+" EoS could not be formatted, cycling to the next eos..."
                 self.__err_print__(msg, **kwargs)
                 continue
             # Set eos data (eos_instance) and 'par.don' line (parline)
-            type, eos_instance, parlnlist, eosid = formdat
-
-            # Pass the parameters to the appropriate files
-            readfiles = self.write_parlnlist(parlnlist, **kwargs)
-            if(readfiles == False):
-                ith_entry = strl.print_ordinal(str(i+1), **kwargs)
-                msg = "The "+ith_entry+" EoS parameters not properly passed to 'bin', cycling to the next eos..."
-                self.__err_print__(msg, **kwargs)
-                continue
+            type, eos_instance, readline, eosid = formatted_eos
 
             # Pass the eos data to the appropriate file
             success = self.write_eos(eos_instance, type, **kwargs)
@@ -941,72 +998,64 @@ class isov(progStruct):
                 self.__err_print__(msg, **kwargs)
                 continue
 
-            isovals[eosid] = self.single_run(readfiles, **kwargs)
+            isovals[eosid] = self.single_run(readfiles, execline, readline, phenline, **kwargs)
             if(isovals[eosid] == False):
                 ith_entry = strl.print_ordinal(str(i+1), **kwargs)
-                msg = "The "+ith_entry+" failed the 'skval_loop' routine, cycling to the next eos..."
+                msg = "The "+ith_entry+" failed the single-run routine, cycling to the next eos..."
                 self.__err_print__(msg, **kwargs)
                 continue
 
         if(reset):
-            self.write_parline(self.initial_parline, **kwargs)
-            self.write_vallist(self.initial_vallist, **kwargs)
+            pass
 
-        return benvals_group
+        return isovals
 
 
-    def isov_run(self, skval, reset=True, return_data=False, **kwargs):
+    def isov_run(self, reset=True, return_data=False, **kwargs):
         '''
-        !Function which runs the SKVAL loop over the EOS!
+        !Function which runs the EoS loop!
         '''
 
         kwargs = self.__update_funcNameHeader__("isov_run", **kwargs)
 
-        if(skval == ()):
-            return self.__err_print__("needs to be set", varID='skval', **kwargs)
-
-        # Get EoS from 'eos' folder
-        eoslist = self.collect_eos()
-        if(eoslist == False):
-            return self.__err_print__("could not collect EoS data from 'eos' folder", **kwargs)
-
-        # Put EoS and skval data in EoS loop
-        benval_data = self.eos_loop(eoslist, skval,
-                                    parline=self.initial_parline,
-                                    initpar=self.skval_dict['Initpar'],
-                                    mirrors=self.skval_dict['Mirrors'],
-                                    density=self.skval_dict['Density'],
-                                    reset  =self.skval_dict['Resetit'],
-                                    **kwargs)
-
-        formatted_isov_data = self.format_isov_data(benval_data,
-                                                      self.skval_dict['EOSpars'],
-                                                      self.skval_dict['EOSgrup'],
-                                                      **kwargs)
-        if(self.skval_dict['EOSpars']):
-            par_Strings, val_Strings, den_Strings = formatted_benval_data
-            self.write_to_dat(self.OUTPARS, par_Strings, **kwargs)
-            self.write_to_dat(self.OUTVALS, val_Strings, **kwargs)
+        # Read from initial parameters
+        if(self.ISOV_SET_PARS):
+            exepar = self.current_exepar
+            rrdpar = self.current_rrdpar
+            phnpar = self.current_phnpar
         else:
-            val_Strings, den_Strings = formatted_benval_data
-            self.write_to_dat(self.OUTVALS, val_Strings, **kwargs)
+            self.__err_print__("parameters not set, run terminated", **kwargs)
 
-        if(self.skval_dict['Density']):
-            self.write_to_dat(self.OUTDENS, den_Strings, **kwargs)
-
-        if(return_data):
-            return formatted_benval_data
+        # Get stored EoS object
+        if(self.ISOV_SET_EOS):
+            eoslist = self.EOS_OBJ
         else:
-            return True
+            return self.__err_print__("no stored EoS object found", **kwargs)
+
+        # Get stored DEN object
+        if(self.ISOV_SET_DEN):
+            denlist = self.DEN_OBJ
+        else:
+            denlist = []
+
+        # Put EoS in EoS loop
+        eosdata = self.eos_loop(eoslist, exepar, rrdpar, phnpar, denlist, reset, **kwargs)
+        if(eosdata == False):
+            return self.__err_print__("failure while looping through the EoSs", **kwargs)
+
+        success = self.format_isov_data(eosdata, return_data, **kwargs)
+        if(success == False):
+            return self.__err_print__("failure when formatting ISOV data", **kwargs)
+
+        return success
 
 
     def set_isov_menu(self, **kwargs):
 
         kwargs = self.__update_funcNameHeader__("set_isov_menu", **kwargs)
 
-        menu_lines = ["Input 'pars' to set initialize input parameters"
-                      "Input 'run' isov program"
-                      "Input 'eos' to run the 'eos' loop for set parameters",
+        menu_lines = ["Input 'pars' to set initialize input parameters",
+                      "Input 'run' isov program",
                       "Input 'menu' to view the menu again",
                       "Input 'cleardat' to clear the 'dat' folder",
                       "Input 'exit' to quit the program"]
@@ -1027,14 +1076,13 @@ class isov(progStruct):
             return True
         else:
             if(input == 'exit' or input == 'quit'):
+                self.write_all_dat_output(**kwargs)
                 return True
 
         if(input == 'pars'):
             self.parline_generator(**kwargs)
         elif(input == 'run'):
-            pass
-        elif(input == 'eos'):
-            run_attempt = self.isov_run(, **kwargs)
+            run_attempt = self.isov_run(**kwargs)
             if(run_attempt == False):
                 print(self.space+"An error occured during 'benv' execution, see above for details\n")
             else:

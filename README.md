@@ -1,5 +1,21 @@
 # ISOV
 
+
+### How to Run
+
+The python program is simply run from the 'isov' directory with the following command:
+
+python exe.py
+
+The fortran program may be run directly by entering the 'bin' directory 
+and using the following shell command:
+
+./run 
+
+Alternatively the following shell script will save any console printout:
+
+./run.sh
+
 ### Introduction
 
 The ISOV program facilates analysis of the nuclear Equation of State.
